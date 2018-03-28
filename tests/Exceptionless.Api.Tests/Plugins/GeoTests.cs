@@ -9,9 +9,10 @@ using Exceptionless.Core.Models.Data;
 using Exceptionless.Core.Plugins.EventProcessor;
 using Exceptionless.Core.Plugins.EventProcessor.Default;
 using Exceptionless.Core.Utility;
+using Exceptionless.Tests.Utility;
 using Foundatio.Caching;
-using Foundatio.Logging;
 using Foundatio.Storage;
+using Microsoft.Extensions.Logging;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -26,7 +27,10 @@ namespace Exceptionless.Api.Tests.Plugins {
 
         private async Task<IGeoIpService> GetResolverAsync(ILoggerFactory loggerFactory) {
             string dataDirectory = PathHelper.ExpandPath(".\\");
-            var storage = new FolderFileStorage(dataDirectory);
+            var storage = new FolderFileStorage(new FolderFileStorageOptions {
+                Folder = dataDirectory, 
+                LoggerFactory = loggerFactory
+            });
 
             if (!await storage.ExistsAsync(MaxMindGeoIpService.GEO_IP_DATABASE_PATH)) {
                 var job = new DownloadGeoIPDatabaseJob(GetService<ICacheClient>(), storage, loggerFactory);
@@ -42,7 +46,7 @@ namespace Exceptionless.Api.Tests.Plugins {
         public async Task WillNotSetLocation() {
             var plugin = new GeoPlugin(await GetResolverAsync(Log));
             var ev = new PersistentEvent { Geo = GREEN_BAY_COORDINATES };
-            await plugin.EventBatchProcessingAsync(new List<EventContext> { new EventContext(ev) });
+            await plugin.EventBatchProcessingAsync(new List<EventContext> { new EventContext(ev, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject()) });
 
             Assert.Equal(GREEN_BAY_COORDINATES, ev.Geo);
             Assert.Null(ev.GetLocation());
@@ -58,7 +62,7 @@ namespace Exceptionless.Api.Tests.Plugins {
             var plugin = new GeoPlugin(await GetResolverAsync(Log));
 
             var ev = new PersistentEvent { Geo = geo };
-            await plugin.EventBatchProcessingAsync(new List<EventContext> { new EventContext(ev) });
+            await plugin.EventBatchProcessingAsync(new List<EventContext> { new EventContext(ev, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject()) });
 
             Assert.Null(ev.Geo);
             Assert.Null(ev.GetLocation());
@@ -68,7 +72,7 @@ namespace Exceptionless.Api.Tests.Plugins {
         public async Task WillSetLocationFromGeo() {
             var plugin = new GeoPlugin(await GetResolverAsync(Log));
             var ev = new PersistentEvent { Geo = GREEN_BAY_IP };
-            await plugin.EventBatchProcessingAsync(new List<EventContext> { new EventContext(ev) });
+            await plugin.EventBatchProcessingAsync(new List<EventContext> { new EventContext(ev, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject()) });
 
             Assert.NotNull(ev.Geo);
             Assert.NotEqual(GREEN_BAY_IP, ev.Geo);
@@ -84,7 +88,7 @@ namespace Exceptionless.Api.Tests.Plugins {
             var plugin = new GeoPlugin(await GetResolverAsync(Log));
             var ev = new PersistentEvent();
             ev.AddRequestInfo(new RequestInfo { ClientIpAddress = GREEN_BAY_IP });
-            await plugin.EventBatchProcessingAsync(new List<EventContext> { new EventContext(ev) });
+            await plugin.EventBatchProcessingAsync(new List<EventContext> { new EventContext(ev, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject()) });
 
             Assert.NotNull(ev.Geo);
 
@@ -99,7 +103,7 @@ namespace Exceptionless.Api.Tests.Plugins {
             var plugin = new GeoPlugin(await GetResolverAsync(Log));
             var ev = new PersistentEvent();
             ev.SetEnvironmentInfo(new EnvironmentInfo { IpAddress = $"127.0.0.1,{GREEN_BAY_IP}" });
-            await plugin.EventBatchProcessingAsync(new List<EventContext> { new EventContext(ev) });
+            await plugin.EventBatchProcessingAsync(new List<EventContext> { new EventContext(ev, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject()) });
 
             Assert.NotNull(ev.Geo);
 
@@ -114,8 +118,8 @@ namespace Exceptionless.Api.Tests.Plugins {
             var plugin = new GeoPlugin(await GetResolverAsync(Log));
 
             var contexts = new List<EventContext> {
-                new EventContext(new PersistentEvent { Geo = GREEN_BAY_IP }),
-                new EventContext(new PersistentEvent { Geo = GREEN_BAY_IP })
+                new EventContext(new PersistentEvent { Geo = GREEN_BAY_IP }, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject()),
+                new EventContext(new PersistentEvent { Geo = GREEN_BAY_IP }, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject())
             };
 
             await plugin.EventBatchProcessingAsync(contexts);
@@ -138,9 +142,9 @@ namespace Exceptionless.Api.Tests.Plugins {
             var greenBayEvent = new PersistentEvent { Geo = GREEN_BAY_IP };
             var irvingEvent = new PersistentEvent { Geo = IRVING_IP };
             await plugin.EventBatchProcessingAsync(new List<EventContext> {
-                new EventContext(ev),
-                new EventContext(greenBayEvent),
-                new EventContext(irvingEvent)
+                new EventContext(ev, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject()),
+                new EventContext(greenBayEvent, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject()),
+                new EventContext(irvingEvent, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject())
             });
 
             Assert.Equal(GREEN_BAY_COORDINATES, greenBayEvent.Geo);
@@ -162,7 +166,7 @@ namespace Exceptionless.Api.Tests.Plugins {
             if (service is NullGeocodeService)
                 return;
 
-            Assert.True(GeoResult.TryParse(GREEN_BAY_COORDINATES, out GeoResult coordinates));
+            Assert.True(GeoResult.TryParse(GREEN_BAY_COORDINATES, out var coordinates));
             var location = await service.ReverseGeocodeAsync(coordinates.Latitude.GetValueOrDefault(), coordinates.Longitude.GetValueOrDefault());
             Assert.Equal("US", location?.Country);
             Assert.Equal("WI", location?.Level1);
@@ -180,9 +184,9 @@ namespace Exceptionless.Api.Tests.Plugins {
             var irvingEvent = new PersistentEvent();
             irvingEvent.SetEnvironmentInfo(new EnvironmentInfo { IpAddress = IRVING_IP });
             await plugin.EventBatchProcessingAsync(new List<EventContext> {
-                new EventContext(ev),
-                new EventContext(greenBayEvent),
-                new EventContext(irvingEvent)
+                new EventContext(ev, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject()),
+                new EventContext(greenBayEvent, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject()),
+                new EventContext(irvingEvent, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject())
             });
 
             Assert.Equal(GREEN_BAY_COORDINATES, greenBayEvent.Geo);
@@ -199,7 +203,7 @@ namespace Exceptionless.Api.Tests.Plugins {
         }
 
         [Theory]
-        [MemberData("IPData")]
+        [MemberData(nameof(IPData))]
         public async Task CanResolveIpAsync(string ip, bool canResolve) {
             var resolver = await GetResolverAsync(Log);
             var result = await resolver.ResolveIpAsync(ip);

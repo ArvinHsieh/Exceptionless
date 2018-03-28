@@ -1,0 +1,23 @@
+<Project ToolsVersion="15.0">
+  <Import Project="version.props" />
+
+  <PropertyGroup>
+    <ProjectParentDirectory>$([System.IO.Path]::GetDirectoryName('$(MSBuildProjectDirectory)'))</ProjectParentDirectory>
+    <ProjectParentDirectoryName>$([System.IO.Path]::GetFileName('$(ProjectParentDirectory)'))</ProjectParentDirectoryName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AsyncFixer" Version="1.1.6" PrivateAssets="All" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <Product>Exceptionless</Product>
+    <Copyright>Copyright (c) 2018 Exceptionless.  All rights reserved.</Copyright>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <WarningsAsErrors>true</WarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageOutputPath>$(SolutionDir)artifacts\</PackageOutputPath>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/exceptionless/exceptionless</RepositoryUrl>
+  </PropertyGroup>
+</Project>

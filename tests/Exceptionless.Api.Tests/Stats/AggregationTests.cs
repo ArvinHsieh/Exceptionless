@@ -6,6 +6,7 @@ using Exceptionless.Core.Models;
 using Exceptionless.Core.Pipeline;
 using Exceptionless.Core.Repositories;
 using Exceptionless.Core.Repositories.Configuration;
+using Exceptionless.Core.Services;
 using Exceptionless.DateTimeExtensions;
 using Exceptionless.Tests.Utility;
 using Foundatio.Repositories;
@@ -14,7 +15,7 @@ using Foundatio.Utility;
 using Nest;
 using Xunit;
 using Xunit.Abstractions;
-using LogLevel = Foundatio.Logging.LogLevel;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Exceptionless.Api.Tests.Stats {
     public sealed class AggregationTests : ElasticTestBase {
@@ -23,6 +24,7 @@ namespace Exceptionless.Api.Tests.Stats {
         private readonly IStackRepository _stackRepository;
         private readonly IOrganizationRepository _organizationRepository;
         private readonly IProjectRepository _projectRepository;
+        private readonly StackService _stackService;
 
         public AggregationTests(ITestOutputHelper output) : base(output) {
             _pipeline = GetService<EventPipeline>();
@@ -30,6 +32,7 @@ namespace Exceptionless.Api.Tests.Stats {
             _stackRepository = GetService<IStackRepository>();
             _organizationRepository = GetService<IOrganizationRepository>();
             _projectRepository = GetService<IProjectRepository>();
+            _stackService = GetService<StackService>();
         }
 
         [Fact]
@@ -122,7 +125,7 @@ namespace Exceptionless.Api.Tests.Stats {
             var result = await _eventRepository.CountBySearchAsync(null, null, "terms:version");
             Assert.Equal(eventCount, result.Total);
             // NOTE: The events are created without a version.
-            Assert.Equal(result.Aggregations.Terms<string>("terms_version").Buckets.Count, 0);
+            Assert.Equal(0, result.Aggregations.Terms<string>("terms_version").Buckets.Count);
         }
 
         [Fact]
@@ -203,7 +206,8 @@ namespace Exceptionless.Api.Tests.Stats {
         private async Task CreateEventsAsync(int eventCount, string[] projectIds, decimal? value = -1) {
             var events = EventData.GenerateEvents(eventCount, projectIds: projectIds, startDate: SystemClock.OffsetUtcNow.SubtractDays(3), endDate: SystemClock.OffsetUtcNow, value: value);
             foreach (var eventGroup in events.GroupBy(ev => ev.ProjectId))
-                await _pipeline.RunAsync(eventGroup);
+                await _pipeline.RunAsync(eventGroup, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject());
+            await _stackService.SaveStackUsagesAsync();
 
             await _configuration.Client.RefreshAsync(Indices.All);
         }
@@ -219,7 +223,7 @@ namespace Exceptionless.Api.Tests.Stats {
                 EventData.GenerateSessionEndEvent(occurrenceDate: startDate.AddMinutes(50), userIdentity: "3")
             };
 
-            await _pipeline.RunAsync(events);
+            await _pipeline.RunAsync(events, OrganizationData.GenerateSampleOrganization(), ProjectData.GenerateSampleProject());
             await _configuration.Client.RefreshAsync(Indices.All);
 
             var results = await _eventRepository.GetByFilterAsync(null, null, EventIndexType.Alias.Date, null, DateTime.MinValue, DateTime.MaxValue, null);
