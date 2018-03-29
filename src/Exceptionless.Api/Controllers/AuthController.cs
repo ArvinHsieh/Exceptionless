@@ -216,7 +216,7 @@ namespace Exceptionless.Api.Controllers {
                 if (!hasValidInviteToken) {
                     // Only allow 10 sign ups per hour period by a single ip.
                     long ipSignupAttempts = await _cache.IncrementAsync(ipSignupAttemptsCacheKey, 1, SystemClock.UtcNow.Ceiling(TimeSpan.FromHours(1)));
-                    if (ipSignupAttempts > 10) {
+                    if (ipSignupAttempts > 50) {
                         _logger.LogError("Signup denied for {EmailAddress} for the {IPSignupAttempts} time.", email, ipSignupAttempts);
                         return BadRequest();
                     }
